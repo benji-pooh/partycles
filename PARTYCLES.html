@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Partycles</title>
+        <style>body { margin: 0; overflow: hidden; background-color: #000; font-family: Arial, sans-serif; } canvas { display: block; } #controls { position: absolute; bottom: 10px; left: 10px; display: flex; flex-wrap: wrap; gap: 5px; } button { padding: 0px 27px 0px 10px; background-color: #3498db; color: white; cursor: pointer; line-height: -6px; font-weight: 400; font-family: 'Roboto', sans-serif; text-transform: uppercase; text-align: center; font-variant: small-caps; letter-spacing: 0.2px; clear: right; float: left; box-sizing: border-box; object-position: 1px; border-radius: 0px; border-top: 1px none; border-right: 1px none; border-bottom: 1px none; border-width: 0px; border-left: 0px none; display: block; flex-basis: -2px; text-shadow: 0px 0px 4px rgba(0, 0, 0, 0.58); transform-origin: 0px; transition: border 505ms cubic-bezier(0.03, 0.96, 1.00, 0.10); box-shadow: 0px 2.6px 18px -3px rgba(255, 255, 255, 0.88); } button:hover { background-color: #2980b9; } input[type="range"] { width: 100px; }</style>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/icon?family=Material+Icons">
+        <link rel="stylesheet" href="materialize/css/materialize.min.css">
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto&display=swap">
+    </head>
+    <body>
+        <canvas id="simulationCanvas">
+            <div class="progress" data-pg-collapsed> 
+                <div class="determinate" style="width: 70%"></div>                 
+            </div>
+        </canvas>
+        <div id="controls">
+            <button id="water">water</button>
+            <button id="oil">oil</button>
+            <button id="foam">foam</button>
+            <button id="wall">wall</button>
+            <button id="air">air</button>
+            <button id="duck">duck</button>
+            <button id="mix">mix</button>
+            <button id="sewer">remove bottom</button>
+            <button id="remove">remove</button>
+            <button id="deleteWall">delete wall</button>
+            <button id="deleteAir">delete air</button>
+            <div style="background-color: rgba(119, 117, 117, 0.28); border-radius: 14px; border-left-width: 0px;">
+                <label for="size" style="color: #ffffff; font-size: 14px; font-weight: 500; text-transform: uppercase; font-family: 'Roboto', sans-serif; letter-spacing: 1px; text-shadow: 0px 3px 7px #242121;">Size:</label>
+                <input type="range" id="size" min="1" max="20" value="5">
+            </div>
+            <div style="background-color: rgba(0, 0, 0, 0.28); border-radius: 14px; border-left-width: 0px;">
+                <label for="bounciness" style="color: #ffffff; font-size: 14px; font-weight: 500; text-transform: uppercase; font-family: 'Roboto', sans-serif; letter-spacing: 1px; text-shadow: 0px 3px 7px #242121;">Bounciness:</label>
+                <input type="range" id="bounciness" min="0" max="1" step="0.1" value="0.5">
+            </div>
+        </div>
+        <script>
+        const canvas = document.getElementById('simulationCanvas');
+        const ctx = canvas.getContext('2d');
+
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+
+        const GRAVITY = 0.2;
+        const FRICTION = 0.99;
+
+        let currentSubstance = 'water';
+        let particleSize = 5;
+        let particleBounciness = 0.5;
+
+        class Particle {
+            constructor(x, y, type) {
+                this.x = x;
+                this.y = y;
+                this.type = type;
+                this.size = particleSize;
+                this.vx = Math.random() * 2 - 1;
+                this.vy = Math.random() * 2 - 1;
+                this.color = this.getColor();
+            }
+
+            getColor() {
+                switch(this.type) {
+                    case 'water': return '#3498db';
+                    case 'oil': return '#f39c12';
+                    case 'foam': return '#ecf0f1';
+                    case 'wall': return '#7f8c8d';
+                    case 'air': return '#bdc3c7';
+                    case 'duck': return '#f1c40f';
+                    default: return '#3498db';
+                }
+            }
+
+            update(particles) {
+                if (this.type === 'wall') return;
+
+                this.vy += GRAVITY;
+                this.vx *= FRICTION;
+                this.vy *= FRICTION;
+
+                this.x += this.vx;
+                this.y += this.vy;
+
+                this.handleWallCollisions();
+                this.handleParticleCollisions(particles);
+            }
+
+            handleWallCollisions() {
+                if (this.x - this.size < 0) {
+                    this.x = this.size;
+                    this.vx = Math.abs(this.vx) * particleBounciness;
+                } else if (this.x + this.size > canvas.width) {
+                    this.x = canvas.width - this.size;
+                    this.vx = -Math.abs(this.vx) * particleBounciness;
+                }
+
+                if (this.y - this.size < 0) {
+                    this.y = this.size;
+                    this.vy = Math.abs(this.vy) * particleBounciness;
+                } else if (this.y + this.size > canvas.height) {
+                    this.y = canvas.height - this.size;
+                    this.vy = -Math.abs(this.vy) * particleBounciness;
+                }
+            }
+
+            handleParticleCollisions(particles) {
+                for (let particle of particles) {
+                    if (particle === this) continue;
+
+                    const dx = particle.x - this.x;
+                    const dy = particle.y - this.y;
+                    const distance = Math.sqrt(dx * dx + dy * dy);
+
+                    if (distance < this.size + particle.size) {
+                        const angle = Math.atan2(dy, dx);
+                        const sin = Math.sin(angle);
+                        const cos = Math.cos(angle);
+
+                        // Rotate particle velocities
+                        const vx1 = this.vx * cos + this.vy * sin;
+                        const vy1 = this.vy * cos - this.vx * sin;
+                        const vx2 = particle.vx * cos + particle.vy * sin;
+                        const vy2 = particle.vy * cos - particle.vx * sin;
+
+                        // Collision reaction
+                        const vFinal1 = ((this.size - particle.size) * vx1 + 2 * particle.size * vx2) / (this.size + particle.size);
+                        const vFinal2 = ((particle.size - this.size) * vx2 + 2 * this.size * vx1) / (this.size + particle.size);
+
+                        // Rotate velocities back
+                        this.vx = vFinal1 * cos - vy1 * sin;
+                        this.vy = vy1 * cos + vFinal1 * sin;
+                        particle.vx = vFinal2 * cos - vy2 * sin;
+                        particle.vy = vy2 * cos + vFinal2 * sin;
+
+                        // Move particles apart
+                        const overlap = (this.size + particle.size - distance) / 2;
+                        this.x -= overlap * cos;
+                        this.y -= overlap * sin;
+                        particle.x += overlap * cos;
+                        particle.y += overlap * sin;
+
+                        // Apply bounciness
+                        this.vx *= particleBounciness;
+                        this.vy *= particleBounciness;
+                        particle.vx *= particleBounciness;
+                        particle.vy *= particleBounciness;
+                    }
+                }
+            }
+
+            draw() {
+                ctx.fillStyle = this.color;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+
+        let particles = [];
+
+        function animate() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            particles.forEach(particle => {
+                particle.update(particles);
+                particle.draw();
+            });
+            requestAnimationFrame(animate);
+        }
+
+        animate();
+
+        function addParticles(x, y, count) {
+            for (let i = 0; i < count; i++) {
+                particles.push(new Particle(x + Math.random() * 20 - 10, y + Math.random() * 20 - 10, currentSubstance));
+            }
+        }
+
+        let isMouseDown = false;
+
+        canvas.addEventListener('mousedown', (e) => {
+            isMouseDown = true;
+            addParticles(e.clientX, e.clientY, 5);
+        });
+
+        canvas.addEventListener('mousemove', (e) => {
+            if (isMouseDown) {
+                addParticles(e.clientX, e.clientY, 2);
+            }
+        });
+
+        canvas.addEventListener('mouseup', () => {
+            isMouseDown = false;
+        });
+
+        // Touch events
+        canvas.addEventListener('touchstart', (e) => {
+            isMouseDown = true;
+            const touch = e.touches[0];
+            addParticles(touch.clientX, touch.clientY, 5);
+        });
+
+        canvas.addEventListener('touchmove', (e) => {
+            if (isMouseDown) {
+                const touch = e.touches[0];
+                addParticles(touch.clientX, touch.clientY, 2);
+            }
+        });
+
+        canvas.addEventListener('touchend', () => {
+            isMouseDown = false;
+        });
+
+        // UI Controls
+        document.querySelectorAll('#controls button').forEach(button => {
+            button.addEventListener('click', () => {
+                if (['water', 'oil', 'foam', 'wall', 'air', 'duck'].includes(button.id)) {
+                    currentSubstance = button.id;
+                } else if (button.id === 'mix') {
+                    // Implement mix functionality
+                    particles.forEach(p => {
+                        p.vx += (Math.random() - 0.5) * 5;
+                        p.vy += (Math.random() - 0.5) * 5;
+                    });
+                } else if (button.id === 'sewer') {
+                    // Implement sewer functionality
+                    particles = particles.filter(p => p.y < canvas.height - 50);
+                } else if (button.id === 'remove') {
+                    // Implement remove functionality
+                    particles = [];
+                } else if (button.id === 'deleteWall') {
+                    particles = particles.filter(p => p.type !== 'wall');
+                } else if (button.id === 'deleteAir') {
+                    particles = particles.filter(p => p.type !== 'air');
+                }
+            });
+        });
+
+        document.getElementById('size').addEventListener('input', (e) => {
+            particleSize = parseInt(e.target.value);
+        });
+
+        document.getElementById('bounciness').addEventListener('input', (e) => {
+            particleBounciness = parseFloat(e.target.value);
+        });
+
+        window.addEventListener('resize', () => {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        });
+    </script>
+        <script src="materialize/js/materialize.min.js"></script>
+    </body>
+</html>
+
+    // hi there
